@@ -1,5 +1,7 @@
 import { jaroWinkler } from '@skyra/jaro-winkler';
 
+import { pickRecord, type LRCLibRecord } from './lrclib-selection';
+
 import { LRC } from '../parsers/lrc';
 import { config } from '../renderer/renderer';
 
@@ -76,6 +78,15 @@ export class LRCLib implements LyricProvider {
       }
     }
 
+    // Versions with word-level timing are rare, and the field search above often
+    // ranks them out of its first 20 results. Without one, ask the free-text
+    // search too. It is an optional extra, so it never fails the whole search.
+    if (!data.some((item) => item.hasWordSync)) {
+      const known = new Set(data.map(({ id }) => id));
+      const extra = await this.searchWordSynced(title, artist);
+      data = [...data, ...extra.filter(({ id }) => !known.has(id))];
+    }
+
     const filteredResults = [];
     for (const item of data) {
       const { artistName } = item;
@@ -142,47 +153,45 @@ export class LRCLib implements LyricProvider {
       return left - right;
     });
 
-    const closestResult = filteredResults[0];
-    if (!closestResult) {
+    // Word-synced lyrics first, then line-synced, then plain.
+    const picked = pickRecord(filteredResults, songDuration);
+    if (!picked) {
       return null;
     }
 
-    if (Math.abs(closestResult.duration - songDuration) > 15) {
-      return null;
-    }
-
-    if (closestResult.instrumental) {
-      return null;
-    }
-
-    const raw = closestResult.syncedLyrics;
-    const plain = closestResult.plainLyrics;
-    if (!raw && !plain) {
-      return null;
-    }
+    const { record, wordLines } = picked;
+    const raw = record.syncedLyrics;
 
     return {
-      title: closestResult.trackName,
-      artists: closestResult.artistName.split(/[&,]/g),
-      lines: raw
-        ? LRC.parse(raw).lines.map((l) => ({
-            ...l,
-            status: 'upcoming' as const,
-          }))
-        : undefined,
-      lyrics: plain,
+      title: record.trackName,
+      artists: record.artistName.split(/[&,]/g),
+      lines:
+        wordLines ??
+        (raw
+          ? LRC.parse(raw).lines.map((l) => ({
+              ...l,
+              status: 'upcoming' as const,
+            }))
+          : undefined),
+      lyrics: record.plainLyrics,
     };
+  }
+
+  private async searchWordSynced(
+    title: string,
+    artist: string,
+  ): Promise<LRCLIBSearchResponse> {
+    try {
+      const query = new URLSearchParams({ q: `${title} ${artist}` });
+      const response = await fetch(`${this.baseUrl}/api/search?${query}`);
+      if (!response.ok) return [];
+
+      const data = (await response.json()) as LRCLIBSearchResponse;
+      return Array.isArray(data) ? data.filter((item) => item.hasWordSync) : [];
+    } catch {
+      return [];
+    }
   }
 }
 
-type LRCLIBSearchResponse = {
-  id: number;
-  name: string;
-  trackName: string;
-  artistName: string;
-  albumName: string;
-  duration: number;
-  instrumental: boolean;
-  plainLyrics: string;
-  syncedLyrics: string;
-}[];
+type LRCLIBSearchResponse = LRCLibRecord[];

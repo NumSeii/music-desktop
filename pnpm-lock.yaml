@@ -228,6 +228,9 @@ importers:
       vudio:
         specifier: 2.1.1
         version: 2.1.1(patch_hash=0e06c2ed11c02bdc490c209fa80070e98517c2735c641f5738b6e15d7dc1959d)
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
       youtubei.js:
         specifier: 17.2.0
         version: 17.2.0

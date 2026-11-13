@@ -151,6 +151,48 @@
   animation: var(--lyrics-animations);
 }
 
+/*
+  Word-level (karaoke) lyrics: instead of lighting up the whole line at once,
+  each word is swept from its first letter to its last while it is sung.
+  SyncedWord sets `--lyrics-progress` (0 to 1) on every tick of the player
+  clock, and every letter works out its own opacity from that single value:
+  letter `i` of `n` is lit while `progress * n` goes from `i` to `i + 1`.
+*/
+@property --lyrics-progress {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+/*
+  The player clock ticks every 100ms (CLOCK_TICK_MS), so the progress glides
+  from one tick to the next. Being driven by the clock, the sweep also stops
+  when the player is paused and follows it when the user seeks.
+*/
+.text-lyrics > span > span.lyric-word {
+  transition:
+    opacity var(--lyrics-opacity-transition),
+    --lyrics-progress 100ms linear;
+}
+
+/* The letters carry the highlight, so the word itself stays fully opaque. */
+.current .text-lyrics > span > span.lyric-word {
+  opacity: 1;
+  animation: none;
+}
+
+.current .lyric-word > .lyric-char {
+  opacity: clamp(
+    var(--lyrics-inactive-opacity),
+    calc(
+      var(--lyrics-inactive-opacity) +
+        (var(--lyrics-active-opacity) - var(--lyrics-inactive-opacity)) *
+        (var(--lyrics-progress) * var(--lyrics-letters) - var(--lyrics-index))
+    ),
+    var(--lyrics-active-opacity)
+  );
+}
+
 .lyrics-renderer {
   display: flex;
   flex-direction: column;

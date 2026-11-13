@@ -104,41 +104,99 @@ test('karaoke', () => {
         time: '00:00:00',
         timeInMs: 0,
         words: [
-          {
-            timeInMs: 40,
-            word: 'When',
-          },
-          {
-            timeInMs: 160,
-            word: 'the',
-          },
-          {
-            timeInMs: 820,
-            word: 'truth',
-          },
-          {
-            timeInMs: 1290,
-            word: 'is',
-          },
-          {
-            timeInMs: 1630,
-            word: 'found',
-          },
-          {
-            timeInMs: 3090,
-            word: 'to',
-          },
-          {
-            timeInMs: 3370,
-            word: 'be',
-          },
-          {
-            timeInMs: 5920,
-            word: 'lies',
-          },
+          { timeInMs: 40, duration: 120, word: 'When', space: true },
+          { timeInMs: 160, duration: 660, word: 'the', space: true },
+          { timeInMs: 820, duration: 470, word: 'truth', space: true },
+          { timeInMs: 1290, duration: 340, word: 'is', space: true },
+          { timeInMs: 1630, duration: 1460, word: 'found', space: true },
+          { timeInMs: 3090, duration: 280, word: 'to', space: true },
+          { timeInMs: 3370, duration: 2550, word: 'be', space: true },
+          // The last word has no end marker and no next line.
+          { timeInMs: 5920, duration: 1000, word: 'lies', space: false },
         ],
       },
     ],
     tags: [],
   });
+});
+
+test('karaoke keeps accents, apostrophes and CJK, and honours end markers', () => {
+  const lrc = LRC.parse(`\
+[00:10.00]<00:10.00>Você <00:10.50>não <00:11.00>don't <00:11.40>
+[00:12.00]<00:12.00>你<00:12.20>好<00:12.50>`);
+
+  expect(lrc).toStrictEqual({
+    lines: [
+      { duration: 10000, text: '', words: [], time: '00:00:00', timeInMs: 0 },
+      {
+        duration: 2000,
+        text: "Você não don't",
+        time: '00:10:00',
+        timeInMs: 10000,
+        words: [
+          { timeInMs: 10000, duration: 500, word: 'Você', space: true },
+          { timeInMs: 10500, duration: 500, word: 'não', space: true },
+          // `<00:11.40>` has no word after it: it ends "don't".
+          { timeInMs: 11000, duration: 400, word: "don't", space: false },
+        ],
+      },
+      {
+        duration: Infinity,
+        text: '你好',
+        time: '00:12:00',
+        timeInMs: 12000,
+        words: [
+          { timeInMs: 12000, duration: 200, word: '你', space: false },
+          { timeInMs: 12200, duration: 300, word: '好', space: false },
+        ],
+      },
+    ],
+    tags: [],
+  });
+});
+
+test('offset shifts lines and words together', () => {
+  const lrc = LRC.parse(`\
+[offset: 500]
+[00:01.00]<00:01.00>one <00:01.50>two
+[00:03.00]<00:03.00>three`);
+
+  expect(lrc).toStrictEqual({
+    lines: [
+      { duration: 1500, text: '', words: [], time: '00:00:00', timeInMs: 0 },
+      {
+        duration: 2000,
+        text: 'one two',
+        time: '00:01:00',
+        timeInMs: 1500,
+        words: [
+          { timeInMs: 1500, duration: 500, word: 'one', space: true },
+          // Ends where the next line starts, both already shifted.
+          { timeInMs: 2000, duration: 1500, word: 'two', space: false },
+        ],
+      },
+      {
+        duration: Infinity,
+        text: 'three',
+        time: '00:03:00',
+        timeInMs: 3500,
+        words: [
+          { timeInMs: 3500, duration: 1000, word: 'three', space: false },
+        ],
+      },
+    ],
+    tags: [],
+  });
+});
+
+test('a repeated karaoke line falls back to line-level timing', () => {
+  const lrc = LRC.parse('[00:05.00][00:15.00]<00:05.00>la <00:05.50>la');
+
+  expect(
+    lrc.lines.map(({ text, timeInMs, words }) => ({ text, timeInMs, words })),
+  ).toStrictEqual([
+    { text: '', timeInMs: 0, words: [] },
+    { text: 'la la', timeInMs: 5000, words: [] },
+    { text: 'la la', timeInMs: 15000, words: [] },
+  ]);
 });

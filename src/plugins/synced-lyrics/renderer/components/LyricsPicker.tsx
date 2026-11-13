@@ -24,6 +24,8 @@ import * as z from 'zod';
 
 import { LitElementWrapper } from '@/solit';
 
+import { lyricsTier } from './lyrics-tier';
+
 import {
   type ProviderName,
   ProviderNames,
@@ -56,27 +58,32 @@ const shouldSwitchProvider = (providerData: ProviderState) => {
   );
 };
 
+// The kind of lyrics dominates: word-synced, then line-synced, then plain. The
+// rest only breaks ties between providers that have the same kind of lyrics.
 const providerBias = (p: ProviderName) =>
+  lyricsTier(lyricsStore.lyrics[p].data) * 10 +
   (lyricsStore.lyrics[p].state === 'done' ? 1 : -1) +
-  (lyricsStore.lyrics[p].data?.lines?.length ? 2 : -1) +
   (lyricsStore.lyrics[p].data?.lines?.length && p === ProviderNames.YTMusic
     ? 1
     : 0) +
   (lyricsStore.lyrics[p].data?.lyrics ? 1 : -1);
 
 const pickBestProvider = () => {
+  const providers = Array.from(providerNames);
+  providers.sort((a, b) => providerBias(b) - providerBias(a));
+  const best = providers[0];
+
+  // The preferred provider only wins ties: it is not worth showing its plain
+  // lyrics when another provider has them synced.
   const preferred = config()?.preferredProvider;
   if (preferred) {
-    const data = lyricsStore.lyrics[preferred].data;
-    if (Array.isArray(data?.lines) || data?.lyrics) {
+    const tier = lyricsTier(lyricsStore.lyrics[preferred].data);
+    if (tier > 0 && tier === lyricsTier(lyricsStore.lyrics[best].data)) {
       return { provider: preferred, force: true };
     }
   }
 
-  const providers = Array.from(providerNames);
-  providers.sort((a, b) => providerBias(b) - providerBias(a));
-
-  return { provider: providers[0], force: false };
+  return { provider: best, force: false };
 };
 
 const [hasManuallySwitchedProvider, setHasManuallySwitchedProvider] =
