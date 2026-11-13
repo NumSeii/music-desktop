@@ -18,12 +18,23 @@ export type SyncedLyricsPluginConfig = {
 
 export type LineLyricsStatus = 'previous' | 'current' | 'upcoming';
 
+export type LineWord = {
+  timeInMs: number;
+  duration: number;
+
+  word: string;
+  /** Whether a space separates this word from the next one. */
+  space: boolean;
+};
+
 export type LineLyrics = {
   time: string;
   timeInMs: number;
   duration: number;
 
   text: string;
+  /** Word-level timing, when the provider has it (karaoke lyrics). */
+  words?: LineWord[];
   status: LineLyricsStatus;
 };
 

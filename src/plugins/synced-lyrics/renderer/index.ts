@@ -1,6 +1,7 @@
 import { createRenderer } from '@/utils';
 import { waitForElement } from '@/utils/wait-for-element';
 
+import { CLOCK_TICK_MS } from './components/word-animation';
 import { disposeReactiveRoot } from './reactive-root';
 import { setConfig, setCurrentTime } from './renderer';
 import { fetchLyrics } from './store';
@@ -56,7 +57,7 @@ export const renderer = createRenderer<
     if (!this.updateTimestampInterval) {
       this.updateTimestampInterval = setInterval(
         () => setCurrentTime((_ytAPI?.getCurrentTime() ?? 0) * 1000),
-        100,
+        CLOCK_TICK_MS,
       );
     }
 

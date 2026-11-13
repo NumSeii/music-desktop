@@ -62,6 +62,10 @@ const providerBias = (p: ProviderName) =>
   (lyricsStore.lyrics[p].data?.lines?.length && p === ProviderNames.YTMusic
     ? 1
     : 0) +
+  // Karaoke lyrics (word-level timing) beat plain line-level ones.
+  (lyricsStore.lyrics[p].data?.lines?.some((line) => line.words?.length)
+    ? 2
+    : 0) +
   (lyricsStore.lyrics[p].data?.lyrics ? 1 : -1);
 
 const pickBestProvider = () => {

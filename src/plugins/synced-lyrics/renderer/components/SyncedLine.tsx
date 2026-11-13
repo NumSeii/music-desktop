@@ -1,7 +1,21 @@
-import { createEffect, For, Show, createSignal, createMemo } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  Show,
+} from 'solid-js';
 import { type VirtualizerHandle } from 'virtua/solid';
 
-import { type LineLyrics } from '@/plugins/synced-lyrics/types';
+import { type LineLyrics, type LineWord } from '@/plugins/synced-lyrics/types';
+
+import {
+  CLOCK_TICK_MS,
+  glowAnimation,
+  splitLetters,
+  wordProgress,
+} from './word-animation';
 
 import { _ytAPI } from '..';
 import { config, currentTime } from '../renderer';
@@ -83,6 +97,86 @@ const EmptyLine = (props: SyncedLineProps) => {
   );
 };
 
+type WordState = 'upcoming' | 'active' | 'sung';
+
+/**
+ * One word of a karaoke line. When it starts being sung, a sweep runs from its
+ * first letter to its last one, over most of the time the word lasts (the
+ * timestamp of the next word minus its own). The sweep is the value of
+ * `--lyrics-progress`, and every letter derives its own opacity from it.
+ */
+const SyncedWord = (props: {
+  word: LineWord;
+  status: SyncedLineProps['status'];
+}) => {
+  const state = createMemo<WordState>(() => {
+    // Only the current line needs the clock, other lines stay static.
+    if (props.status !== 'current') {
+      return props.status === 'previous' ? 'sung' : 'upcoming';
+    }
+
+    const elapsed = currentTime() - props.word.timeInMs;
+    if (elapsed < 0) return 'upcoming';
+    return elapsed >= props.word.duration ? 'sung' : 'active';
+  });
+
+  const text = createMemo(() => {
+    let word = props.word.word;
+    const convertChineseText = config()?.convertChineseCharacter;
+    if (convertChineseText && convertChineseText !== 'disabled') {
+      word = convertChineseCharacter(word, convertChineseText);
+    }
+    return word;
+  });
+
+  const letters = createMemo(() => splitLetters(text()));
+
+  // Where the sweep has to be when the next tick of the clock arrives. A CSS
+  // transition (see style.css) glides there, which keeps the sweep smooth,
+  // follows seeks, and stops by itself when the player is paused.
+  const progress = createMemo(() => {
+    switch (state()) {
+      case 'upcoming':
+        return 0;
+      case 'sung':
+        return 1;
+      default:
+        return wordProgress(
+          currentTime() + CLOCK_TICK_MS - props.word.timeInMs,
+          props.word.duration,
+        );
+    }
+  });
+
+  // The animation string stays the same from active to sung, so it is not
+  // restarted when the word ends.
+  const animation = createMemo(() =>
+    props.status === 'current' && state() !== 'upcoming'
+      ? glowAnimation(props.word.duration, config()?.lineEffect === 'fancy')
+      : 'none',
+  );
+
+  return (
+    <span
+      class={`lyric-word ${state()}`}
+      style={{
+        '--lyrics-letters': letters().length,
+        '--lyrics-progress': progress(),
+        'animation': animation(),
+      }}
+    >
+      <Index each={letters()}>
+        {(letter, index) => (
+          <span class="lyric-char" style={{ '--lyrics-index': index }}>
+            {letter()}
+          </span>
+        )}
+      </Index>
+      {props.word.space ? ' ' : ''}
+    </span>
+  );
+};
+
 export const SyncedLine = (props: SyncedLineProps) => {
   const text = createMemo(() => {
     let line = props.line.text;
@@ -135,7 +229,13 @@ export const SyncedLine = (props: SyncedLineProps) => {
             style={{ 'display': 'flex', 'flex-direction': 'column' }}
           >
             <span>
-              <For each={text().split(' ')}>
+              {/* Karaoke lines: every word is timed on its own. */}
+              <For each={props.line.words ?? []}>
+                {(word) => <SyncedWord status={props.status} word={word} />}
+              </For>
+
+              {/* Line-level lines: all words light up together, as before. */}
+              <For each={props.line.words?.length ? [] : text().split(' ')}>
                 {(word, index) => {
                   return (
                     <span
