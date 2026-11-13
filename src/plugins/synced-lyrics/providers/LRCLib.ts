@@ -1,15 +1,11 @@
 import { jaroWinkler } from '@skyra/jaro-winkler';
 
+import { pickRecord, type LRCLibRecord } from './lrclib-selection';
+
 import { LRC } from '../parsers/lrc';
-import { Lyricsfile } from '../parsers/lyricsfile';
 import { config } from '../renderer/renderer';
 
 import type { LyricProvider, LyricResult, SearchSongInfo } from '../types';
-
-// A word-synced version is only used when it is this close (in seconds) to the
-// song being played, otherwise it is a different cut and its timing is off.
-// This is LRCLib's own tolerance for `/api/get`.
-const WORD_SYNC_MAX_DURATION_DIFF = 2;
 
 export class LRCLib implements LyricProvider {
   name = 'LRCLib';
@@ -157,43 +153,18 @@ export class LRCLib implements LyricProvider {
       return left - right;
     });
 
-    const closestResult = filteredResults[0];
-    if (!closestResult) {
+    // Word-synced lyrics first, then line-synced, then plain.
+    const picked = pickRecord(filteredResults, songDuration);
+    if (!picked) {
       return null;
     }
 
-    if (Math.abs(closestResult.duration - songDuration) > 15) {
-      return null;
-    }
-
-    if (closestResult.instrumental) {
-      return null;
-    }
-
-    // Prefer the version with word-level timing (karaoke), as long as it is the
-    // same cut of the song. If its lyricsfile cannot be read, keep the closest
-    // line-level result instead.
-    const wordSynced = filteredResults.find(
-      (item) =>
-        item.hasWordSync &&
-        item.lyricsfile &&
-        !item.instrumental &&
-        Math.abs(item.duration - songDuration) <= WORD_SYNC_MAX_DURATION_DIFF,
-    );
-    const wordLines = wordSynced
-      ? Lyricsfile.parse(wordSynced.lyricsfile!)
-      : null;
-
-    const source = wordLines ? wordSynced! : closestResult;
-    const raw = source.syncedLyrics;
-    const plain = source.plainLyrics;
-    if (!wordLines && !raw && !plain) {
-      return null;
-    }
+    const { record, wordLines } = picked;
+    const raw = record.syncedLyrics;
 
     return {
-      title: source.trackName,
-      artists: source.artistName.split(/[&,]/g),
+      title: record.trackName,
+      artists: record.artistName.split(/[&,]/g),
       lines:
         wordLines ??
         (raw
@@ -202,7 +173,7 @@ export class LRCLib implements LyricProvider {
               status: 'upcoming' as const,
             }))
           : undefined),
-      lyrics: plain,
+      lyrics: record.plainLyrics,
     };
   }
 
@@ -223,17 +194,4 @@ export class LRCLib implements LyricProvider {
   }
 }
 
-type LRCLIBSearchResponse = {
-  id: number;
-  name: string;
-  trackName: string;
-  artistName: string;
-  albumName: string;
-  duration: number;
-  instrumental: boolean;
-  plainLyrics: string;
-  syncedLyrics: string;
-  /** Word-level timing is only available in `lyricsfile` (YAML). */
-  hasWordSync?: boolean;
-  lyricsfile?: string | null;
-}[];
+type LRCLIBSearchResponse = LRCLibRecord[];
